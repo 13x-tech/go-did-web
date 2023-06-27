@@ -1,4 +1,4 @@
-module github.com/13x-Tech/go-did-web
+module github.com/13x-tech/go-did-web
 
 go 1.19
 

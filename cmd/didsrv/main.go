@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/13x-Tech/go-did-web/pkg/server"
+	"github.com/13x-tech/go-did-web/pkg/server"
 	"github.com/urfave/cli/v2"
 )
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/13x-Tech/go-did-web/pkg/didweb"
+	"github.com/13x-tech/go-did-web/pkg/didweb"
 )
 
 func main() {

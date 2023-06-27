@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/13x-Tech/go-did-web/pkg/didweb"
-	"github.com/13x-Tech/go-did-web/pkg/storage"
-	"github.com/13x-Tech/go-did-web/pkg/storage/didstorage"
+	"github.com/13x-tech/go-did-web/pkg/didweb"
+	"github.com/13x-tech/go-did-web/pkg/storage"
+	"github.com/13x-tech/go-did-web/pkg/storage/didstorage"
 	"github.com/TBD54566975/ssi-sdk/did"
 	"github.com/gorilla/mux"
 )

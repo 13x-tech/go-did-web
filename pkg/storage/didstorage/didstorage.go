@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/13x-Tech/go-did-web/pkg/didweb"
+	"github.com/13x-tech/go-did-web/pkg/didweb"
 	"github.com/TBD54566975/ssi-sdk/did"
 )
 
