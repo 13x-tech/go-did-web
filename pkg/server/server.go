@@ -99,7 +99,7 @@ func New(opts ...Option) (*Server, error) {
 
 	if s.handler == nil {
 		r := mux.NewRouter()
-		r.HandleFunc("/register", s.handleRegister).Methods("POST")
+		r.HandleFunc("/register", s.keyAuthMiddleware(s.handleRegister)).Methods("POST")
 		r.HandleFunc("/resolve/{id}", s.handleResolve).Methods("GET")
 		r.HandleFunc("/update/{id}", s.handleUpdate).Methods("POST")
 		r.HandleFunc("/delete/{id}", s.handleDelete).Methods("DELETE")
@@ -206,7 +206,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.RawPath, "/")
 	if len(pathParts) < 3 {
+		fmt.Printf("path parts: %s\n", pathParts)
 		s.errorResponse(w, 400, "invalid")
+		return
 	}
 	id := pathParts[2]
 	if len(id) == 0 {
@@ -237,6 +239,16 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {}
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {}
+
+func (s *Server) keyAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys, ok := r.Header["X-Api-Key"]
+		if !ok || len(keys) == 0 {
+			fmt.Printf("no keys")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 type RegisterRequest struct {
 	ID       string                `json:"id"`
