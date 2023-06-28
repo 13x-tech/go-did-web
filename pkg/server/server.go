@@ -243,8 +243,10 @@ func (s *Server) keyAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		keys, ok := r.Header["X-Api-Key"]
 		if !ok || len(keys) == 0 {
-			fmt.Printf("no keys")
+			s.errorResponse(w, 401, "unauthorized")
+			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }

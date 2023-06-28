@@ -37,6 +37,7 @@ func (d *DIDStore) Register(id string, keys []KeyInput, services []did.Service) 
 	doc := did.NewDIDDocumentBuilder()
 	doc.Document = newDID
 	for _, key := range keys {
+		key.VerificationMethod.Controller = doc.ID
 		if err := doc.AddVerificationMethod(key.VerificationMethod); err != nil {
 			return nil, fmt.Errorf("verification method error: %w", err)
 		}
