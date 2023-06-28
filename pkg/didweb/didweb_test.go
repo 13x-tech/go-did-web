@@ -49,7 +49,7 @@ func TestParse(t *testing.T) {
 		expected  string
 		expectErr bool
 	}{
-		{"did:web:example.com", "did:web:example.com", true},
+		{"did:web:example.com", "example.com", false},
 		{"did:web:example.com:john", "example.com:john", false},
 		{"example.com", "", true},
 		// add more cases as needed
