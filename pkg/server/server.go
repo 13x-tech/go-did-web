@@ -205,7 +205,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.RawPath, "/")
-	fmt.Printf("path parts: %s\n", pathParts)
+	fmt.Printf("Raw Path: %s", r.URL.RawPath)
+	fmt.Printf("Path: %s", r.URL.Path)
+	fmt.Printf("RequestURI: %s", r.RequestURI)
 	if len(pathParts) < 3 {
 		s.errorResponse(w, 400, "invalid")
 		return
