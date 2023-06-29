@@ -70,6 +70,7 @@ func (b *SSEBroker) Start() {
 }
 
 func (b *SSEBroker) BroadcastPayment(id string) {
+	fmt.Printf("attempt broadcast: %s", id)
 	b.mu.RLock()
 	client, ok := b.clients[id]
 	b.mu.Unlock()
@@ -90,6 +91,7 @@ func (b *SSEBroker) WaitForPayment(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	id := vars["id"]
+	fmt.Printf("Connected and waiting: %s", id)
 	b.mu.Lock()
 	clients, ok := b.clients[id]
 	if !ok {
