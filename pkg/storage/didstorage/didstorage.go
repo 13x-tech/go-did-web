@@ -143,7 +143,7 @@ func (s *RegisterStore) Register(doc *did.Document) (string, error) {
 	}{
 		Out:     false,
 		Amount:  69,
-		WebHook: fmt.Sprintf("https://did-web.onrender.com/paid", doc.ID),
+		WebHook: fmt.Sprintf("https://did-web.onrender.com/paid/%s", doc.ID),
 	}
 
 	jsonRequest, err := json.Marshal(request)
