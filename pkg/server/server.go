@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/13x-tech/go-did-web/pkg/didweb"
 	"github.com/13x-tech/go-did-web/pkg/storage"
@@ -29,6 +30,93 @@ func NewStore(domain, storageDir, bucket string) (Store, error) {
 	}
 
 	return didstorage.NewDIDStore(store), nil
+}
+
+type Message struct {
+	id      string
+	message string
+}
+
+type SSEBroker struct {
+	mu       sync.RWMutex
+	clients  map[string]map[chan string]struct{}
+	messages chan Message
+}
+
+func (b *SSEBroker) Start() {
+	go func() {
+		for {
+			select {
+			case msg := <-b.messages:
+				b.mu.RLock()
+				clients, ok := b.clients[msg.id]
+				b.mu.RUnlock()
+				if ok {
+					for c := range clients {
+						c <- msg.message
+					}
+				}
+			}
+		}
+	}()
+}
+
+func (b *SSEBroker) BroadcastPayment(id string) {
+	b.mu.RLock()
+	client, ok := b.clients[id]
+	b.mu.Unlock()
+	if ok {
+		for c := range client {
+			c <- "paid"
+		}
+		//TODO close out connections?
+	}
+}
+
+func (b *SSEBroker) WaitForPayment(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported!", http.StatusInternalServerError)
+		return
+	}
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+	b.mu.Lock()
+	clients, ok := b.clients[id]
+	if !ok {
+		clients = make(map[chan string]struct{})
+	}
+	messageChan := make(chan string)
+	clients[messageChan] = struct{}{}
+	b.clients[id] = clients
+	b.mu.Unlock()
+
+	ctx := r.Context()
+	go func() {
+		<-ctx.Done()
+		b.mu.Lock()
+		clients, ok := b.clients[id]
+		if ok {
+			delete(clients, messageChan)
+			b.clients[id] = clients
+		}
+		b.mu.Unlock()
+	}()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	for {
+		select {
+		case msg := <-messageChan:
+			fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+			flusher.Flush()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 type Option func(s *Server) error
@@ -76,12 +164,13 @@ func WithRegisterStore(store *didstorage.RegisterStore) Option {
 }
 
 type Server struct {
-	host     string
-	port     int
-	domain   string
-	store    Store
-	regStore *didstorage.RegisterStore
-	handler  http.Handler
+	host      string
+	port      int
+	domain    string
+	store     Store
+	regStore  *didstorage.RegisterStore
+	payBroker *SSEBroker
+	handler   http.Handler
 }
 
 func New(opts ...Option) (*Server, error) {
@@ -112,12 +201,13 @@ func New(opts ...Option) (*Server, error) {
 	if s.handler == nil {
 		r := mux.NewRouter()
 		r.HandleFunc("/register",
-			s.addCORS(true,
-				s.handleRegister,
-				// s.keyAuthMiddleware(s.handleRegister),
-			),
+			// s.addCORS(true,
+			s.handleRegister,
+			// s.keyAuthMiddleware(s.handleRegister),
+			// ),
 		).Methods("POST")
 		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid))
+		r.HandleFunc("/paid/{id}", s.addCORS(false, s.payBroker.WaitForPayment))
 		r.HandleFunc("/resolve/{id}", s.addCORS(false, s.handleResolve)).Methods("GET")
 		r.HandleFunc("/update/{id}", s.addCORS(true, s.handleUpdate)).Methods("POST")
 		r.HandleFunc("/delete/{id}", s.addCORS(true, s.handleDelete)).Methods("DELETE")
