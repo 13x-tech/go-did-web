@@ -37,6 +37,14 @@ type Message struct {
 	message string
 }
 
+func NewBroker() *SSEBroker {
+	return &SSEBroker{
+		mu:       sync.RWMutex{},
+		clients:  make(map[string]map[chan string]struct{}),
+		messages: make(chan Message),
+	}
+}
+
 type SSEBroker struct {
 	mu       sync.RWMutex
 	clients  map[string]map[chan string]struct{}
@@ -200,12 +208,7 @@ func New(opts ...Option) (*Server, error) {
 
 	if s.handler == nil {
 		r := mux.NewRouter()
-		r.HandleFunc("/register",
-			s.addCORS(false,
-				s.handleRegister,
-			// s.keyAuthMiddleware(s.handleRegister),
-			),
-		).Methods("POST", "HEAD")
+		r.HandleFunc("/register", s.addCORS(false, s.handleRegister))
 		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid))
 		r.HandleFunc("/payment/{id}", s.addCORS(false, s.payBroker.WaitForPayment))
 		r.HandleFunc("/resolve/{id}", s.addCORS(false, s.handleResolve)).Methods("GET")
@@ -217,6 +220,9 @@ func New(opts ...Option) (*Server, error) {
 		r.PathPrefix("/").HandlerFunc(s.addCORS(false, s.handleDefault)).Methods("GET")
 		s.handler = r
 	}
+
+	s.payBroker = NewBroker()
+	go s.payBroker.Start()
 
 	return s, nil
 }
@@ -315,11 +321,8 @@ func (s *Server) jsonSuccess(w http.ResponseWriter, response any) {
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		if r.Method == "HEAD" {
-			s.jsonSuccess(w, "")
-		} else {
-			s.errorResponse(w, 500, "invalid")
-		}
+		w.WriteHeader(http.StatusNotFound)
+		return
 	}
 
 	body, err := io.ReadAll(r.Body)
@@ -423,6 +426,10 @@ func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
