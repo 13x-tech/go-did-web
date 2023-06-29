@@ -205,7 +205,7 @@ func New(opts ...Option) (*Server, error) {
 				s.handleRegister,
 			// s.keyAuthMiddleware(s.handleRegister),
 			),
-		).Methods("POST")
+		).Methods("POST", "HEAD")
 		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid))
 		r.HandleFunc("/payment/{id}", s.addCORS(false, s.payBroker.WaitForPayment))
 		r.HandleFunc("/resolve/{id}", s.addCORS(false, s.handleResolve)).Methods("GET")
