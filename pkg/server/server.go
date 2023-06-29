@@ -205,7 +205,8 @@ func New(opts ...Option) (*Server, error) {
 	if s.port == 0 {
 		s.port = 8080
 	}
-
+	s.payBroker = NewBroker()
+	go s.payBroker.Start()
 	if s.handler == nil {
 		r := mux.NewRouter()
 		r.HandleFunc("/register", s.addCORS(false, s.handleRegister))
@@ -220,9 +221,6 @@ func New(opts ...Option) (*Server, error) {
 		r.PathPrefix("/").HandlerFunc(s.addCORS(false, s.handleDefault)).Methods("GET")
 		s.handler = r
 	}
-
-	s.payBroker = NewBroker()
-	go s.payBroker.Start()
 
 	return s, nil
 }
