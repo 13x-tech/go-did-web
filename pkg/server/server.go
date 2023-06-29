@@ -73,7 +73,7 @@ func (b *SSEBroker) BroadcastPayment(id string) {
 	fmt.Printf("attempt broadcast: %s", id)
 	b.mu.RLock()
 	client, ok := b.clients[id]
-	b.mu.Unlock()
+	b.mu.RUnlock()
 	if ok {
 		for c := range client {
 			c <- "paid"
