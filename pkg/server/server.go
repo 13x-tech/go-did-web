@@ -201,13 +201,13 @@ func New(opts ...Option) (*Server, error) {
 	if s.handler == nil {
 		r := mux.NewRouter()
 		r.HandleFunc("/register",
-			// s.addCORS(true,
-			s.handleRegister,
+			s.addCORS(false,
+				s.handleRegister,
 			// s.keyAuthMiddleware(s.handleRegister),
-			// ),
+			),
 		).Methods("POST")
 		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid))
-		r.HandleFunc("/paid/{id}", s.addCORS(false, s.payBroker.WaitForPayment))
+		r.HandleFunc("/payment/{id}", s.addCORS(false, s.payBroker.WaitForPayment))
 		r.HandleFunc("/resolve/{id}", s.addCORS(false, s.handleResolve)).Methods("GET")
 		r.HandleFunc("/update/{id}", s.addCORS(true, s.handleUpdate)).Methods("POST")
 		r.HandleFunc("/delete/{id}", s.addCORS(true, s.handleDelete)).Methods("DELETE")
