@@ -168,21 +168,25 @@ func (s *Server) handlePaid(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("pay enpoint no id\n")
 		return
 	}
+
+	doc, err := s.regStore.Paid(id)
+	if err != nil {
+		s.errorResponse(w, 401, "unauthorized")
+		return
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Printf("invalid body: %s\n", err.Error())
 		return
 	}
+
 	var info PayInfo
 	if err := json.Unmarshal(body, &info); err != nil {
 		fmt.Printf("could not get payment info: %s\n", err.Error())
 		return
 	}
-	doc, err := s.regStore.Paid(id)
-	if err != nil {
-		s.errorResponse(w, 500, "invalid payment")
-		return
-	}
+
 	if err := s.store.Register(doc); err != nil {
 		s.errorResponse(w, 500, fmt.Sprintf("could not register: %s", err.Error()))
 		return
