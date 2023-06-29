@@ -68,12 +68,20 @@ func WithHandler(handler http.Handler) Option {
 	}
 }
 
+func WithRegisterStore(store *didstorage.RegisterStore) Option {
+	return func(s *Server) error {
+		s.regStore = store
+		return nil
+	}
+}
+
 type Server struct {
-	host    string
-	port    int
-	domain  string
-	store   Store
-	handler http.Handler
+	host     string
+	port     int
+	domain   string
+	store    Store
+	regStore *didstorage.RegisterStore
+	handler  http.Handler
 }
 
 func New(opts ...Option) (*Server, error) {
@@ -82,6 +90,10 @@ func New(opts ...Option) (*Server, error) {
 		if err := opt(s); err != nil {
 			return s, err
 		}
+	}
+
+	if s.regStore == nil {
+		return nil, fmt.Errorf("reg store required")
 	}
 
 	// Do some sort of cert check
@@ -99,14 +111,19 @@ func New(opts ...Option) (*Server, error) {
 
 	if s.handler == nil {
 		r := mux.NewRouter()
-		r.HandleFunc("/register", s.keyAuthMiddleware(s.handleRegister)).Methods("POST")
-		r.HandleFunc("/resolve/{id}", s.handleResolve).Methods("GET")
-		r.HandleFunc("/update/{id}", s.handleUpdate).Methods("POST")
-		r.HandleFunc("/delete/{id}", s.handleDelete).Methods("DELETE")
-		r.HandleFunc("/health", s.handleHealth).Methods("GET")
-		r.HandleFunc("/.well-known", s.handleWellKnownDir).Methods("GET")
+		r.HandleFunc("/register",
+			s.addCORS(true,
+				s.keyAuthMiddleware(s.handleRegister),
+			),
+		).Methods("POST")
+		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid)).Methods("GET")
+		r.HandleFunc("/resolve/{id}", s.addCORS(false, s.handleResolve)).Methods("GET")
+		r.HandleFunc("/update/{id}", s.addCORS(true, s.handleUpdate)).Methods("POST")
+		r.HandleFunc("/delete/{id}", s.addCORS(true, s.handleDelete)).Methods("DELETE")
+		r.HandleFunc("/health", s.addCORS(true, s.handleHealth)).Methods("GET")
+		r.HandleFunc("/.well-known", s.addCORS(false, s.handleWellKnownDir)).Methods("GET")
 
-		r.PathPrefix("/").HandlerFunc(s.handleDefault).Methods("GET")
+		r.PathPrefix("/").HandlerFunc(s.addCORS(false, s.handleDefault)).Methods("GET")
 		s.handler = r
 	}
 
@@ -138,6 +155,16 @@ func (s *Server) handleDefault(w http.ResponseWriter, r *http.Request) {
 	s.jsonSuccess(w, doc)
 }
 
+func (s *Server) handlePaid(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, ok := vars["id"]
+	if !ok {
+		fmt.Printf("pay enpoint no id\n")
+	} else {
+		fmt.Printf("paid id: %s\n", id)
+	}
+	s.jsonSuccess(w, "ok")
+}
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
@@ -194,13 +221,18 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := s.store.Register(input.ID, input.Keys, input.Services)
+	doc, err := didstorage.DIDFromProps(input.ID, input.Keys, input.Services)
 	if err != nil {
 		s.errorResponse(w, 500, fmt.Sprintf("could not register: %s", err.Error()))
 		return
 	}
 
-	s.jsonSuccess(w, doc)
+	paymentRequest, err := s.regStore.Register(doc)
+	if err != nil {
+		s.errorResponse(w, 500, fmt.Sprintf("could not get payment request: %s", err.Error()))
+	}
+
+	s.jsonSuccess(w, paymentRequest)
 }
 
 func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +279,19 @@ func (s *Server) keyAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if limited {
+			w.Header().Set("Access-Control-Allow-Origin", s.domain)
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 		next.ServeHTTP(w, r)
 	})
 }
