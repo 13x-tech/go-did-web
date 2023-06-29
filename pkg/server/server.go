@@ -286,6 +286,7 @@ func (s *Server) handlePaid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go s.payBroker.BroadcastPayment(doc.ID)
 	s.jsonSuccess(w, "ok")
 }
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
