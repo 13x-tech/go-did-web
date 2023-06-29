@@ -314,6 +314,14 @@ func (s *Server) jsonSuccess(w http.ResponseWriter, response any) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		if r.Method == "HEAD" {
+			s.jsonSuccess(w, "")
+		} else {
+			s.errorResponse(w, 500, "invalid")
+		}
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.errorResponse(w, 500, "could not get boxy")
