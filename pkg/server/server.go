@@ -17,7 +17,7 @@ import (
 )
 
 type Store interface {
-	Register(id string, keys []didstorage.KeyInput, services []did.Service) (*did.Document, error)
+	Register(doc *did.Document) error
 	Resolve(id string) (*did.Document, error)
 	Delete(id string) error
 }
@@ -113,10 +113,11 @@ func New(opts ...Option) (*Server, error) {
 		r := mux.NewRouter()
 		r.HandleFunc("/register",
 			s.addCORS(true,
-				s.keyAuthMiddleware(s.handleRegister),
+				s.handleRegister,
+				// s.keyAuthMiddleware(s.handleRegister),
 			),
 		).Methods("POST")
-		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid)).Methods("GET")
+		r.HandleFunc("/paid/{id}", s.addCORS(false, s.handlePaid))
 		r.HandleFunc("/resolve/{id}", s.addCORS(false, s.handleResolve)).Methods("GET")
 		r.HandleFunc("/update/{id}", s.addCORS(true, s.handleUpdate)).Methods("POST")
 		r.HandleFunc("/delete/{id}", s.addCORS(true, s.handleDelete)).Methods("DELETE")
@@ -155,14 +156,38 @@ func (s *Server) handleDefault(w http.ResponseWriter, r *http.Request) {
 	s.jsonSuccess(w, doc)
 }
 
+type PayInfo struct {
+	PaymentHash string `json:"payment_hash"`
+	Amount      int    `json:"amount"`
+}
+
 func (s *Server) handlePaid(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
 		fmt.Printf("pay enpoint no id\n")
-	} else {
-		fmt.Printf("paid id: %s\n", id)
+		return
 	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fmt.Printf("invalid body: %s\n", err.Error())
+		return
+	}
+	var info PayInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		fmt.Printf("could not get payment info: %s\n", err.Error())
+		return
+	}
+	doc, err := s.regStore.Paid(id)
+	if err != nil {
+		s.errorResponse(w, 500, "invalid payment")
+		return
+	}
+	if err := s.store.Register(doc); err != nil {
+		s.errorResponse(w, 500, fmt.Sprintf("could not register: %s", err.Error()))
+		return
+	}
+
 	s.jsonSuccess(w, "ok")
 }
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -227,12 +252,16 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	paymentRequest, err := s.regStore.Register(doc)
-	if err != nil {
-		s.errorResponse(w, 500, fmt.Sprintf("could not get payment request: %s", err.Error()))
+	if payReq, ok := s.regStore.Get(doc); ok {
+		s.jsonSuccess(w, payReq)
+	} else {
+		paymentRequest, err := s.regStore.Register(doc)
+		if err != nil {
+			s.errorResponse(w, 500, fmt.Sprintf("could not get payment request: %s", err.Error()))
+			return
+		}
+		s.jsonSuccess(w, paymentRequest.PaymentRequest)
 	}
-
-	s.jsonSuccess(w, paymentRequest)
 }
 
 func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {

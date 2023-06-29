@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/13x-tech/go-did-web/pkg/server"
+	"github.com/13x-tech/go-did-web/pkg/storage"
 	"github.com/13x-tech/go-did-web/pkg/storage/didstorage"
 	"github.com/urfave/cli/v2"
 )
@@ -64,16 +65,20 @@ func main() {
 
 func startServer(domain, storageDir, apiHost, apiKey string) error {
 
-	storage, err := server.NewStore(domain, storageDir, "did")
+	serverStore, err := server.NewStore(domain, storageDir, "did")
 	if err != nil {
-		return err
+		return fmt.Errorf("could not load server storage: %w", err)
+	}
+	regStore, err := storage.New(storageDir, "reg")
+	if err != nil {
+		return fmt.Errorf("could not load reg storage: %w", err)
 	}
 
-	registerStore := didstorage.NewRegisterStore(apiHost, apiKey)
+	registerStore := didstorage.NewRegisterStore(apiHost, apiKey, regStore)
 
 	srv, err := server.New(
 		server.WithRegisterStore(registerStore),
-		server.WithStore(storage),
+		server.WithStore(serverStore),
 		server.WithDomain(domain),
 	)
 	if err != nil {

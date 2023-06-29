@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 
@@ -81,21 +82,20 @@ type KeyInput struct {
 	VerificationMethod did.VerificationMethod `json:"verificationMethod"`
 }
 
-func (d *DIDStore) Register(id string, keys []KeyInput, services []did.Service) (*did.Document, error) {
-	newDID, err := DIDFromProps(id, keys, services)
+func (d *DIDStore) Register(doc *did.Document) error {
+	bytes, err := json.Marshal(doc)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("invalid doc: %w", err)
+	}
+	didwebUrl, err := didweb.Parse(doc.ID)
+	if err != nil {
+		return fmt.Errorf("could not parse did doc id: %w", err)
+	}
+	if err := d.store.Set(didwebUrl.ID(), bytes); err != nil {
+		return fmt.Errorf("could not store: %w", err)
 	}
 
-	bytes, err := json.Marshal(newDID)
-	if err != nil {
-		return nil, err
-	}
-	if err := d.store.Set(id, bytes); err != nil {
-		return nil, err
-	}
-
-	return newDID, nil
+	return nil
 }
 
 func (d *DIDStore) Resolve(id string) (*did.Document, error) {
@@ -119,67 +119,116 @@ func (d *DIDStore) Delete(id string) error {
 type RegisterStore struct {
 	apiHost string
 	apiKey  string
+	store   Storage
 }
 
-func NewRegisterStore(apiHost, apiKey string) *RegisterStore {
+func NewRegisterStore(apiHost, apiKey string, storage Storage) *RegisterStore {
 	return &RegisterStore{
 		apiHost: apiHost,
 		apiKey:  apiKey,
+		store:   storage,
 	}
 }
 
-func (s *RegisterStore) Register(doc *did.Document) (string, error) {
+type PaymentResponse struct {
+	PaymentHash    string `json:"payment_hash"`
+	PaymentRequest string `json:"payment_request"`
+}
+
+func (s *RegisterStore) Get(doc *did.Document) (string, bool) {
+	payReq, err := s.store.Get(doc.ID)
+	if err != nil || len(payReq) == 0 {
+		return "", false
+	}
+	return string(payReq), true
+}
+
+func (s *RegisterStore) Paid(id string) (*did.Document, error) {
+	docBytes, err := s.store.Get(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid url: %w", err)
+	}
+	var doc did.Document
+	if err := json.Unmarshal(docBytes, &doc); err != nil {
+		return nil, fmt.Errorf("invalid document: %w", err)
+	}
+
+	if err := s.store.Delete(id); err != nil {
+		return nil, fmt.Errorf("could not delete secret: %w", err)
+	}
+	s.store.Delete(doc.ID)
+
+	return &doc, nil
+}
+
+func (s *RegisterStore) Register(doc *did.Document) (*PaymentResponse, error) {
 
 	if doc.ID == "" {
-		return "", fmt.Errorf("invalid did doc")
+		return nil, fmt.Errorf("invalid did doc")
+	}
+
+	docJSON, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal: %w", err)
+	}
+	nonce := make([]byte, 64)
+	_, err = rand.Read(nonce)
+	if err != nil {
+		return nil, fmt.Errorf("could not generate randomess: %w", err)
 	}
 
 	request := struct {
-		Out     bool   `json:"out, omitempty"`
+		Out     bool   `json:"out"`
+		Memo    string `json:"memo,omitempty"`
 		Amount  int    `json:"amount"`
 		Expiry  int    `json:"expiry,omitempty"`
 		Unit    string `json:"unit,omitempty"`
 		WebHook string `json:"webhook,omitempty"`
 	}{
 		Out:     false,
+		Memo:    fmt.Sprintf("Register %s", doc.ID),
 		Amount:  69,
-		WebHook: fmt.Sprintf("https://did-web.onrender.com/paid/%s", doc.ID),
+		WebHook: fmt.Sprintf("https://did-web.onrender.com/paid/%x", nonce),
 	}
 
 	jsonRequest, err := json.Marshal(request)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/api/v1/payments", s.apiHost), strings.NewReader(string(jsonRequest)))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Add("X-Api-Key", s.apiKey)
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("could not do request: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("invalid status code: %d - %s", resp.StatusCode, resp.Status)
+		return nil, fmt.Errorf("could not do request: %w", err)
 	}
 
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("could not read body: %w", err)
+		return nil, fmt.Errorf("could not read body: %w", err)
 	}
 
-	response := struct {
-		PaymentHash    string `json:"payment_hash"`
-		PaymentRequest string `json:"payment_request"`
-	}{}
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("invalid status code: %d - %s", resp.StatusCode, resp.Status)
+	}
 
+	var response PaymentResponse
 	if err := json.Unmarshal(responseData, &response); err != nil {
-		return "", fmt.Errorf("could not parse: %w", err)
+		return nil, fmt.Errorf("could not parse: %w", err)
 	}
 
-	return response.PaymentRequest, nil
+	if err := s.store.Set(fmt.Sprintf("%x", nonce), docJSON); err != nil {
+		return nil, fmt.Errorf("could not store payment request: %w", err)
+	}
+
+	if err := s.store.Set(doc.ID, []byte(response.PaymentRequest)); err != nil {
+		return nil, fmt.Errorf("could not store payment request: %w", err)
+	}
+
+	return &response, nil
 }

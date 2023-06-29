@@ -23,7 +23,7 @@ func New(storageDir, bucket string) (*BoltStorage, error) {
 	if err := initStorageDir(storageDir); err != nil {
 		return nil, err
 	}
-	dbPath := filepath.Join(storageDir, "dids.db")
+	dbPath := filepath.Join(storageDir, fmt.Sprintf("%s.db", bucket))
 	db, err := bbolt.Open(dbPath, 0600, bbolt.DefaultOptions)
 	if err != nil {
 		return nil, err
