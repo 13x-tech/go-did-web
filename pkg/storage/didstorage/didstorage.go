@@ -144,7 +144,10 @@ func (s *RegisterStore) Get(doc *did.Document) (string, bool) {
 	if s.validatePaymentRequest(string(payReq)) {
 		return string(payReq), true
 	} else {
-		fmt.Printf("Invalid Pay Req\n")
+		fmt.Printf("Invalid Pay Req... deleting record\n")
+		if err := s.store.Delete(doc.ID); err != nil {
+			return "", false
+		}
 		return "", false
 	}
 
