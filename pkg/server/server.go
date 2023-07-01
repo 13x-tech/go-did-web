@@ -37,21 +37,21 @@ type Message struct {
 	message string
 }
 
-func NewBroker() *SSEBroker {
-	return &SSEBroker{
+func NewBroker() *PaymentBroker {
+	return &PaymentBroker{
 		mu:       sync.RWMutex{},
 		clients:  make(map[string]map[chan string]struct{}),
 		messages: make(chan Message),
 	}
 }
 
-type SSEBroker struct {
+type PaymentBroker struct {
 	mu       sync.RWMutex
 	clients  map[string]map[chan string]struct{}
 	messages chan Message
 }
 
-func (b *SSEBroker) Start() {
+func (b *PaymentBroker) Start() {
 	go func() {
 		for {
 			select {
@@ -69,7 +69,7 @@ func (b *SSEBroker) Start() {
 	}()
 }
 
-func (b *SSEBroker) BroadcastPayment(id string) {
+func (b *PaymentBroker) BroadcastPayment(id string) {
 	fmt.Printf("attempt broadcast: %s", id)
 	b.mu.RLock()
 	client, ok := b.clients[id]
@@ -82,7 +82,7 @@ func (b *SSEBroker) BroadcastPayment(id string) {
 	}
 }
 
-func (b *SSEBroker) WaitForPayment(w http.ResponseWriter, r *http.Request) {
+func (b *PaymentBroker) WaitForPayment(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming not supported!", http.StatusInternalServerError)
@@ -179,7 +179,7 @@ type Server struct {
 	domain    string
 	store     Store
 	regStore  *didstorage.RegisterStore
-	payBroker *SSEBroker
+	payBroker *PaymentBroker
 	handler   http.Handler
 }
 

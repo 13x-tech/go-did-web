@@ -140,7 +140,14 @@ func (s *RegisterStore) Get(doc *did.Document) (string, bool) {
 	if err != nil || len(payReq) == 0 {
 		return "", false
 	}
-	return string(payReq), true
+
+	if s.validatePaymentRequest(string(payReq)) {
+		return string(payReq), true
+	} else {
+		fmt.Printf("Invalid Pay Req\n")
+		return "", false
+	}
+
 }
 
 func (s *RegisterStore) Paid(id string) (*did.Document, error) {
@@ -231,4 +238,37 @@ func (s *RegisterStore) Register(doc *did.Document) (*PaymentResponse, error) {
 	}
 
 	return &response, nil
+}
+
+func (s *RegisterStore) validatePaymentRequest(payReq string) bool {
+	jsonRequest, _ := json.Marshal(struct {
+		Data string `json:"data"`
+	}{Data: payReq})
+	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/api/v1/payments", s.apiHost), strings.NewReader(string(jsonRequest)))
+	if err != nil {
+		return false
+	}
+	req.Header.Add("X-Api-Key", s.apiKey)
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	if len(responseData) > 0 {
+
+		fmt.Printf("Response Data: %s\n", responseData)
+		return true
+	}
+	return false
 }
