@@ -10,6 +10,7 @@ import (
 
 	"github.com/13x-tech/go-did-web/pkg/didweb"
 	"github.com/TBD54566975/ssi-sdk/did"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 type Storage interface {
@@ -18,15 +19,19 @@ type Storage interface {
 	Delete(id string) error
 }
 
-func DIDFromProps(id string, keys []KeyInput, services []did.Service) (*did.Document, error) {
-	newDID, err := didweb.New(id)
+func DIDFromProps(id string, ownerKey *secp256k1.PublicKey, additionalKeys []KeyInput, services []did.Service) (*did.Document, error) {
+	if ownerKey == nil {
+		return nil, fmt.Errorf("must supply a valid owner key")
+	}
+
+	newDID, err := didweb.New(id, ownerKey)
 	if err != nil {
 		return nil, err
 	}
 
 	doc := did.NewDIDDocumentBuilder()
 	doc.Document = newDID
-	for _, key := range keys {
+	for _, key := range additionalKeys {
 		key.VerificationMethod.Controller = doc.ID
 		if err := doc.AddVerificationMethod(key.VerificationMethod); err != nil {
 			return nil, fmt.Errorf("verification method error: %w", err)

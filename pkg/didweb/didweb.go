@@ -9,17 +9,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/TBD54566975/ssi-sdk/crypto"
 	"github.com/TBD54566975/ssi-sdk/did"
+	"github.com/TBD54566975/ssi-sdk/did/web"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-func New(id string) (*did.Document, error) {
-
-	doc := did.NewDIDDocumentBuilder()
-	if err := doc.SetID(fmt.Sprintf("did:web:%s", id)); err != nil {
-		return nil, fmt.Errorf("invalid id %s: %w", id, err)
-	}
-
-	return doc.Build()
+func New(id string, mainKey *secp256k1.PublicKey) (*did.Document, error) {
+	dweb := web.DIDWeb(id)
+	return dweb.CreateDoc(crypto.SECP256k1Schnorr, mainKey.SerializeCompressed())
 }
 
 type DIDWebURL struct {
@@ -41,9 +39,11 @@ func (u *DIDWebURL) URL() string {
 	}
 	return rawURL.String()
 }
+
 func (u DIDWebURL) RawHost() string {
 	return u.host
 }
+
 func (u DIDWebURL) Host() string {
 	host := u.host
 	port := 0
@@ -72,14 +72,7 @@ func (u DIDWebURL) Host() string {
 }
 
 func (u *DIDWebURL) DID() string {
-	parts := u.parts
-	if len(parts) == 0 {
-		return fmt.Sprintf("did:web:%s", u.host)
-	}
-	for i, part := range parts {
-		parts[i] = url.QueryEscape(part)
-	}
-	return fmt.Sprintf("did:web:%s:%s", u.host, strings.Join(parts, ":"))
+	return fmt.Sprintf("did:web:%s", u.ID())
 }
 
 func (u *DIDWebURL) ID() string {
@@ -176,6 +169,9 @@ func Resolve(id string, client *http.Client) (*did.Document, error) {
 		return nil, fmt.Errorf("masmatched document id: %w", err)
 	}
 	return &doc, nil
+}
+
+func Test() {
 }
 
 var (

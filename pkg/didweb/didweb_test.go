@@ -4,17 +4,25 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/stretchr/testify/assert"
 )
+
+func GenSchnorrPubKey() *secp256k1.PublicKey {
+	private, _ := secp256k1.GeneratePrivateKey()
+	return private.PubKey()
+}
 
 // Testing New()
 func TestNew(t *testing.T) {
 	id := "example.com:alice"
-	doc, err := New(id)
+	pubKey := GenSchnorrPubKey()
+	doc, err := New(id, pubKey)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, doc)
 	assert.Equal(t, "did:web:example.com:alice", doc.ID)
+	//TODO assert Key
 }
 
 func TestParsePath(t *testing.T) {

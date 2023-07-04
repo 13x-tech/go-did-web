@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/13x-tech/go-did-web/pkg/storage"
 	"github.com/13x-tech/go-did-web/pkg/storage/didstorage"
 	"github.com/TBD54566975/ssi-sdk/did"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multibase"
 )
@@ -334,6 +336,7 @@ func (s *Server) handlePaid(w http.ResponseWriter, r *http.Request) {
 	go s.payBroker.BroadcastPayment(doc.ID)
 	s.jsonSuccess(w, "ok")
 }
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
@@ -395,7 +398,19 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := didstorage.DIDFromProps(input.ID, input.Keys, input.Services)
+	pubKeyHex, err := hex.DecodeString(input.OwnerPubKey)
+	if err != nil {
+		s.errorResponse(w, 400, "invalid public key hex")
+		return
+	}
+
+	pubKey, err := secp256k1.ParsePubKey(pubKeyHex)
+	if err != nil {
+		s.errorResponse(w, 400, "invalid public key material")
+		return
+	}
+
+	doc, err := didstorage.DIDFromProps(input.ID, pubKey, input.AdditionalKeys, input.Services)
 	if err != nil {
 		s.errorResponse(w, 500, fmt.Sprintf("could not register: %s", err.Error()))
 		return
@@ -449,18 +464,6 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {}
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {}
 
-func (s *Server) keyAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		keys, ok := r.Header["X-Api-Key"]
-		if !ok || len(keys) == 0 {
-			s.errorResponse(w, 401, "unauthorized")
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
 func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if limited {
@@ -479,7 +482,8 @@ func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
 }
 
 type RegisterRequest struct {
-	ID       string                `json:"id"`
-	Keys     []didstorage.KeyInput `json:"keys"`
-	Services []did.Service         `json:"services"`
+	ID             string                `json:"id"`
+	OwnerPubKey    string                `json:"ownerPubKey"`
+	AdditionalKeys []didstorage.KeyInput `json:"additionalKeys"`
+	Services       []did.Service         `json:"services"`
 }
