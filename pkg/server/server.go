@@ -15,6 +15,7 @@ import (
 	"github.com/13x-tech/go-did-web/pkg/storage/didstorage"
 	"github.com/TBD54566975/ssi-sdk/did"
 	"github.com/gorilla/mux"
+	"github.com/multiformats/go-multibase"
 )
 
 type Store interface {
@@ -218,9 +219,7 @@ func New(opts ...Option) (*Server, error) {
 		r.HandleFunc("/update/{id}", s.addCORS(true, s.handleUpdate)).Methods("POST")
 		r.HandleFunc("/delete/{id}", s.addCORS(true, s.handleDelete)).Methods("DELETE")
 		r.HandleFunc("/health", s.addCORS(true, s.handleHealth)).Methods("GET")
-		r.HandleFunc("/.well-known", s.addCORS(false, s.handleWellKnownDir)).Methods("GET")
-
-		r.PathPrefix("/").HandlerFunc(s.addCORS(false, s.handleDefault)).Methods("GET")
+		r.PathPrefix("/.well-known").HandlerFunc(s.addCORS(false, s.handleWellKnownDir)).Methods("GET")
 		s.handler = r
 	}
 
@@ -233,7 +232,51 @@ func (s *Server) Start() error {
 
 func (s *Server) handleWellKnownDir(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Well Known: %s\n", r.URL.Path)
+	if strings.EqualFold(r.URL.Path, ".well-known/nostr.json") {
+		s.handleWellKnownNostr(w, r)
+		return
+	}
+	//TODO DID well-knowns
+
 	w.WriteHeader(http.StatusNotImplemented)
+}
+
+type NostrWellKnown struct {
+	Names map[string]string
+}
+
+func (s *Server) handleWellKnownNostr(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if len(name) == 0 {
+		s.jsonSuccess(w, NostrWellKnown{Names: map[string]string{}})
+		return
+	}
+
+	doc, err := s.store.Resolve(fmt.Sprintf("%s:%s", s.domain, name))
+	if err != nil {
+		s.jsonSuccess(w, NostrWellKnown{Names: map[string]string{}})
+		return
+	}
+
+	for _, vm := range doc.VerificationMethod {
+		if strings.EqualFold(vm.Type.String(), "SchnorrSecp256k1VerificationKey2019") && strings.Contains(strings.ToLower(vm.ID), "nostr") {
+			enc, data, err := multibase.Decode(vm.PublicKeyMultibase)
+			if err != nil {
+				s.jsonSuccess(w, NostrWellKnown{Names: map[string]string{}})
+				return
+			}
+			if enc != multibase.Base16 {
+				s.jsonSuccess(w, NostrWellKnown{Names: map[string]string{}})
+				return
+			}
+			s.jsonSuccess(w, NostrWellKnown{Names: map[string]string{
+				name: fmt.Sprintf("%x", data),
+			}})
+			return
+		}
+	}
+
+	s.jsonSuccess(w, NostrWellKnown{Names: map[string]string{}})
 }
 
 func (s *Server) handleDefault(w http.ResponseWriter, r *http.Request) {
