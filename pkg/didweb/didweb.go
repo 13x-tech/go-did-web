@@ -12,12 +12,11 @@ import (
 	"github.com/TBD54566975/ssi-sdk/crypto"
 	"github.com/TBD54566975/ssi-sdk/did"
 	"github.com/TBD54566975/ssi-sdk/did/web"
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-func New(id string, mainKey *secp256k1.PublicKey) (*did.Document, error) {
-	dweb := web.DIDWeb(id)
-	return dweb.CreateDoc(crypto.SECP256k1Schnorr, mainKey.SerializeCompressed())
+func New(id string, publicKey []byte) (*did.Document, error) {
+	dweb := web.DIDWeb(fmt.Sprintf("did:web:%s", id))
+	return dweb.CreateDoc(crypto.P256, publicKey)
 }
 
 type DIDWebURL struct {

@@ -15,7 +15,6 @@ import (
 	"github.com/13x-tech/go-did-web/pkg/storage"
 	"github.com/13x-tech/go-did-web/pkg/storage/didstorage"
 	"github.com/TBD54566975/ssi-sdk/did"
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multibase"
 )
@@ -94,7 +93,7 @@ func (b *PaymentBroker) WaitForPayment(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	id := vars["id"]
-	fmt.Printf("Connected and waiting: %s", id)
+	log.Printf("Connected and waiting: %s\n", id)
 	b.mu.Lock()
 	clients, ok := b.clients[id]
 	if !ok {
@@ -371,7 +370,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.errorResponse(w, 500, "could not get boxy")
@@ -379,6 +377,12 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	var input RegisterRequest
 	if err := json.Unmarshal(body, &input); err != nil {
+		s.errorResponse(w, 400, "invalid request")
+		return
+	}
+
+	pubKey, err := hex.DecodeString(input.OwnerPubKey)
+	if err != nil {
 		s.errorResponse(w, 400, "invalid request")
 		return
 	}
@@ -398,23 +402,14 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pubKeyHex, err := hex.DecodeString(input.OwnerPubKey)
-	if err != nil {
-		s.errorResponse(w, 400, "invalid public key hex")
-		return
-	}
-
-	pubKey, err := secp256k1.ParsePubKey(pubKeyHex)
-	if err != nil {
-		s.errorResponse(w, 400, "invalid public key material")
-		return
-	}
-
 	doc, err := didstorage.DIDFromProps(input.ID, pubKey, input.AdditionalKeys, input.Services)
 	if err != nil {
 		s.errorResponse(w, 500, fmt.Sprintf("could not register: %s", err.Error()))
 		return
 	}
+	docJSON, _ := json.Marshal(doc)
+
+	fmt.Printf("\n\nDoc: %s\n\n", docJSON)
 
 	if payReq, ok := s.regStore.Get(doc); ok {
 		s.jsonSuccess(w, payReq)
@@ -483,7 +478,7 @@ func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
 
 type RegisterRequest struct {
 	ID             string                `json:"id"`
-	OwnerPubKey    string                `json:"ownerPubKey"`
+	OwnerPubKey    string                `json:"ownerPubKey,omitempty"`
 	AdditionalKeys []didstorage.KeyInput `json:"additionalKeys"`
 	Services       []did.Service         `json:"services"`
 }

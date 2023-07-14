@@ -10,7 +10,6 @@ import (
 
 	"github.com/13x-tech/go-did-web/pkg/didweb"
 	"github.com/TBD54566975/ssi-sdk/did"
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 type Storage interface {
@@ -19,14 +18,14 @@ type Storage interface {
 	Delete(id string) error
 }
 
-func DIDFromProps(id string, ownerKey *secp256k1.PublicKey, additionalKeys []KeyInput, services []did.Service) (*did.Document, error) {
+func DIDFromProps(id string, ownerKey []byte, additionalKeys []KeyInput, services []did.Service) (*did.Document, error) {
 	if ownerKey == nil {
 		return nil, fmt.Errorf("must supply a valid owner key")
 	}
 
 	newDID, err := didweb.New(id, ownerKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not create did: %w", err)
 	}
 
 	doc := did.NewDIDDocumentBuilder()
@@ -274,7 +273,6 @@ func (s *RegisterStore) validatePaymentRequest(payReq string) bool {
 	}
 
 	if len(responseData) > 0 {
-
 		fmt.Printf("Response Data: %s\n", responseData)
 		return true
 	}
