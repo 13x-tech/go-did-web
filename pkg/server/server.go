@@ -366,7 +366,7 @@ func (s *Server) jsonSuccess(w http.ResponseWriter, response any) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -457,7 +457,35 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {}
 
-func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {}
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	pathParts := strings.Split(r.RequestURI, "/")
+	if len(pathParts) < 3 {
+		s.errorResponse(w, 400, "invalid")
+		return
+	}
+	id := pathParts[2]
+	if len(id) == 0 {
+		s.errorResponse(w, 400, "invalid id")
+		return
+	}
+	url, err := didweb.Parse(id)
+	if err != nil {
+		s.errorResponse(w, 400, "invalid id")
+		return
+	}
+
+	//TODO: Validate Auth - challenge middleware
+	if strings.EqualFold(url.RawHost(), s.domain) {
+		if err := s.store.Delete(url.ID()); err == nil {
+			s.jsonSuccess(w, "ok")
+			return
+		}
+	}
+}
 
 func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
