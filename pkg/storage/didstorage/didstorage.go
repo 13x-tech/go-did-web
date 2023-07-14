@@ -18,15 +18,19 @@ type Storage interface {
 	Delete(id string) error
 }
 
-func DIDFromProps(id string, keys []KeyInput, services []did.Service) (*did.Document, error) {
-	newDID, err := didweb.New(id)
+func DIDFromProps(id string, ownerKey []byte, additionalKeys []KeyInput, services []did.Service) (*did.Document, error) {
+	if ownerKey == nil {
+		return nil, fmt.Errorf("must supply a valid owner key")
+	}
+
+	newDID, err := didweb.New(id, ownerKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not create did: %w", err)
 	}
 
 	doc := did.NewDIDDocumentBuilder()
 	doc.Document = newDID
-	for _, key := range keys {
+	for _, key := range additionalKeys {
 		key.VerificationMethod.Controller = doc.ID
 		if err := doc.AddVerificationMethod(key.VerificationMethod); err != nil {
 			return nil, fmt.Errorf("verification method error: %w", err)
@@ -269,7 +273,6 @@ func (s *RegisterStore) validatePaymentRequest(payReq string) bool {
 	}
 
 	if len(responseData) > 0 {
-
 		fmt.Printf("Response Data: %s\n", responseData)
 		return true
 	}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,7 +93,7 @@ func (b *PaymentBroker) WaitForPayment(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	id := vars["id"]
-	fmt.Printf("Connected and waiting: %s", id)
+	log.Printf("Connected and waiting: %s\n", id)
 	b.mu.Lock()
 	clients, ok := b.clients[id]
 	if !ok {
@@ -334,6 +335,7 @@ func (s *Server) handlePaid(w http.ResponseWriter, r *http.Request) {
 	go s.payBroker.BroadcastPayment(doc.ID)
 	s.jsonSuccess(w, "ok")
 }
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
@@ -364,11 +366,10 @@ func (s *Server) jsonSuccess(w http.ResponseWriter, response any) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.errorResponse(w, 500, "could not get boxy")
@@ -376,6 +377,12 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	var input RegisterRequest
 	if err := json.Unmarshal(body, &input); err != nil {
+		s.errorResponse(w, 400, "invalid request")
+		return
+	}
+
+	pubKey, err := hex.DecodeString(input.OwnerPubKey)
+	if err != nil {
 		s.errorResponse(w, 400, "invalid request")
 		return
 	}
@@ -395,11 +402,14 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := didstorage.DIDFromProps(input.ID, input.Keys, input.Services)
+	doc, err := didstorage.DIDFromProps(input.ID, pubKey, input.AdditionalKeys, input.Services)
 	if err != nil {
 		s.errorResponse(w, 500, fmt.Sprintf("could not register: %s", err.Error()))
 		return
 	}
+	docJSON, _ := json.Marshal(doc)
+
+	fmt.Printf("\n\nDoc: %s\n\n", docJSON)
 
 	if payReq, ok := s.regStore.Get(doc); ok {
 		s.jsonSuccess(w, payReq)
@@ -447,18 +457,34 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {}
 
-func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {}
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	pathParts := strings.Split(r.RequestURI, "/")
+	if len(pathParts) < 3 {
+		s.errorResponse(w, 400, "invalid")
+		return
+	}
+	id := pathParts[2]
+	if len(id) == 0 {
+		s.errorResponse(w, 400, "invalid id")
+		return
+	}
+	url, err := didweb.Parse(id)
+	if err != nil {
+		s.errorResponse(w, 400, "invalid id")
+		return
+	}
 
-func (s *Server) keyAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		keys, ok := r.Header["X-Api-Key"]
-		if !ok || len(keys) == 0 {
-			s.errorResponse(w, 401, "unauthorized")
+	//TODO: Validate Auth - challenge middleware
+	if strings.EqualFold(url.RawHost(), s.domain) {
+		if err := s.store.Delete(url.ID()); err == nil {
+			s.jsonSuccess(w, "ok")
 			return
 		}
-
-		next.ServeHTTP(w, r)
-	})
+	}
 }
 
 func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
@@ -479,7 +505,8 @@ func (s *Server) addCORS(limited bool, next http.HandlerFunc) http.HandlerFunc {
 }
 
 type RegisterRequest struct {
-	ID       string                `json:"id"`
-	Keys     []didstorage.KeyInput `json:"keys"`
-	Services []did.Service         `json:"services"`
+	ID             string                `json:"id"`
+	OwnerPubKey    string                `json:"ownerPubKey,omitempty"`
+	AdditionalKeys []didstorage.KeyInput `json:"additionalKeys"`
+	Services       []did.Service         `json:"services"`
 }

@@ -1,20 +1,56 @@
 package didweb
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"fmt"
 	"testing"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/stretchr/testify/assert"
 )
+
+func GenSchnorrPubKey() *secp256k1.PublicKey {
+	private, _ := secp256k1.GeneratePrivateKey()
+	return private.PubKey()
+}
+
+// compressPublicKey compresses an ECDSA public key.
+func compressPublicKey(pubKey *ecdsa.PublicKey) []byte {
+	byteLen := (pubKey.Params().BitSize + 7) >> 3
+	compressed := make([]byte, 1+byteLen)
+	compressed[0] = 2 // 02/03 prefix depending on y's least significant bit
+	if pubKey.Y.Bit(0) == 1 {
+		compressed[0] = 3
+	}
+
+	xBytes := pubKey.X.Bytes()
+	copy(compressed[1+byteLen-len(xBytes):], xBytes)
+	return compressed
+}
+
+func GenP256Key() ([]byte, error) {
+	pKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("could not generate key: %w", err)
+	}
+	return compressPublicKey(&pKey.PublicKey), nil
+}
 
 // Testing New()
 func TestNew(t *testing.T) {
 	id := "example.com:alice"
-	doc, err := New(id)
+	pubKey, err := GenP256Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := New(id, pubKey)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, doc)
 	assert.Equal(t, "did:web:example.com:alice", doc.ID)
+	//TODO assert Key
 }
 
 func TestParsePath(t *testing.T) {
